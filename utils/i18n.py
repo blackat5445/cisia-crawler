@@ -56,7 +56,9 @@ TRANSLATIONS = {
         # Telegram bot commands
         "bot_welcome": (
             "Welcome to CISIA CRAWLER!\n\n"
-            "You are now subscribed to seat availability alerts.\n\n"
+            "You are now subscribed.\n"
+            "You will NOT receive any alerts until you choose your exams.\n\n"
+            "Use /exams to select which exams you want to follow.\n\n"
             "Commands:\n"
             "/exams - Choose which exams to follow\n"
             "/status - Show your current subscription\n"
@@ -68,6 +70,7 @@ TRANSLATIONS = {
         "bot_exams_invalid": "Invalid input. Send numbers separated by commas (e.g. 1,3,5) or 'all'.",
         "bot_status": "Your subscription:\nActive: {active}\nExams: {exams}",
         "bot_status_all": "all exams",
+        "bot_status_none": "none (use /exams to choose)",
         "bot_not_subscribed": "You are not subscribed. Send /start to subscribe.",
         "bot_new_subscriber": "New subscriber: {name} (@{username}, ID: {user_id})",
     },
@@ -119,7 +122,9 @@ TRANSLATIONS = {
         "book_now": "Prenota Ora!",
         "bot_welcome": (
             "Benvenuto in CISIA CRAWLER!\n\n"
-            "Sei ora iscritto agli avvisi di disponibilita posti.\n\n"
+            "Sei ora iscritto.\n"
+            "NON riceverai alcun avviso finche non scegli i tuoi esami.\n\n"
+            "Usa /exams per selezionare quali esami vuoi seguire.\n\n"
             "Comandi:\n"
             "/exams - Scegli quali esami seguire\n"
             "/status - Mostra la tua iscrizione\n"
@@ -131,6 +136,7 @@ TRANSLATIONS = {
         "bot_exams_invalid": "Input non valido. Invia numeri separati da virgola (es. 1,3,5) o 'all'.",
         "bot_status": "La tua iscrizione:\nAttivo: {active}\nEsami: {exams}",
         "bot_status_all": "tutti gli esami",
+        "bot_status_none": "nessuno (usa /exams per scegliere)",
         "bot_not_subscribed": "Non sei iscritto. Invia /start per iscriverti.",
         "bot_new_subscriber": "Nuovo iscritto: {name} (@{username}, ID: {user_id})",
     },
