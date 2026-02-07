@@ -26,6 +26,7 @@ TRANSLATIONS = {
         "next_check_random": "Next check in {seconds} seconds...",
         "error_check": "Error during check: {error}",
         "msg_count": "Telegram message count per alert: {count}",
+        "startup_delay": "Startup delay: waiting {seconds}s before starting scraping...",
         # Notifications
         "telegram_enabled": "Telegram notifications: ENABLED",
         "telegram_disabled": "Telegram notifications: DISABLED",
@@ -34,6 +35,7 @@ TRANSLATIONS = {
         "email_disabled": "Email notifications: DISABLED",
         "telegram_sent": "Telegram message sent",
         "telegram_error": "Telegram error: {error}",
+        "telegram_rate_limited": "Telegram rate limit hit (HTTP 429). Sleeping {seconds}s...",
         "telegram_repeat": "Telegram message {current}/{total} sent",
         "telegram_subscriber_sent": "Notified subscriber {chat_id}",
         "telegram_subscriber_skip": "Subscriber {chat_id} not subscribed to {exam}, skipping",
@@ -53,6 +55,8 @@ TRANSLATIONS = {
         "deadline": "Deadline",
         "exam": "Exam",
         "book_now": "Book Now!",
+        "dates": "dates",
+        "daily_no_spots": "\u2705 Bot is running: no available spots found for <b>{exam}</b> in the last 24 hours.",
         # Telegram bot commands
         "bot_welcome": (
             "Welcome to CISIA CRAWLER!\n\n"
@@ -95,6 +99,7 @@ TRANSLATIONS = {
         "next_check_random": "Prossimo controllo tra {seconds} secondi...",
         "error_check": "Errore durante il controllo: {error}",
         "msg_count": "Messaggi Telegram per avviso: {count}",
+        "startup_delay": "Ritardo avvio: attendo {seconds}s prima di iniziare lo scraping...",
         "telegram_enabled": "Notifiche Telegram: ATTIVE",
         "telegram_disabled": "Notifiche Telegram: DISATTIVATE",
         "telegram_multiuser": "Modalita multi-utente Telegram: ATTIVA",
@@ -102,6 +107,7 @@ TRANSLATIONS = {
         "email_disabled": "Notifiche email: DISATTIVATE",
         "telegram_sent": "Messaggio Telegram inviato",
         "telegram_error": "Errore Telegram: {error}",
+        "telegram_rate_limited": "Limite Telegram raggiunto (HTTP 429). Attendo {seconds}s...",
         "telegram_repeat": "Messaggio Telegram {current}/{total} inviato",
         "telegram_subscriber_sent": "Notificato abbonato {chat_id}",
         "telegram_subscriber_skip": "Abbonato {chat_id} non iscritto a {exam}, salto",
@@ -120,6 +126,8 @@ TRANSLATIONS = {
         "deadline": "Scadenza",
         "exam": "Esame",
         "book_now": "Prenota Ora!",
+        "dates": "date",
+        "daily_no_spots": "\u2705 Il bot e' attivo: nessun posto disponibile trovato per <b>{exam}</b> nelle ultime 24 ore.",
         "bot_welcome": (
             "Benvenuto in CISIA CRAWLER!\n\n"
             "Sei ora iscritto.\n"
