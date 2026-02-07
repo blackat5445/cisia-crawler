@@ -419,13 +419,13 @@ docker run -d --name cisia-crawler --restart unless-stopped \
 
 ## About
 
-| Field   | Value                                          |
-|---------|------------------------------------------------|
-| Name    | CISIA CRAWLER                                  |
-| Version | 1.1.0                                          |
-| Author  | Kasra Falahati                                 |
-| License | MIT                                            |
-| GitHub  | https://github.com/blackat5445/cisia-crawler   |
+| Field   | Value                                        |
+|---------|----------------------------------------------|
+| Name    | CISIA CRAWLER                                |
+| Version | 1.1.0                                        |
+| Author  | Kasra Falahati                               |
+| License | Attribution-NonCommercial 4.0 International  |
+| GitHub  | https://github.com/blackat5445/cisia-crawler |
 
 ---
 
@@ -450,3 +450,5 @@ If you set 60-900, the range is 840s. 30% of that is 252s. So if
 the bot waits 100s, the next wait will differ by at least 252s
 (e.g. 352s or more). This prevents checking twice in quick
 succession.
+
+**WARNING! DO NOT SET THE INTERVAL CHECKING TIME BELOW 3 MINUTES, THIS MAY RESULT SERVER IP BLOCK!**
