@@ -52,17 +52,17 @@ class TelegramNotifier:
     def _format_alert(self, seat):
         """Format a single seat alert message (Telegram only - emojis here)."""
         return (
-            "\xf0\x9f\x9a\xa8 <b>{title}</b>\n\n"
-            "\xf0\x9f\x93\x8b <b>{lbl_exam}:</b> {exam}\n"
-            "\xf0\x9f\x93\x8b <b>{lbl_fmt}:</b> {fmt}\n"
-            "\xf0\x9f\x8f\xab <b>{lbl_uni}:</b> {uni}\n"
-            "\xf0\x9f\x93\x8d <b>{lbl_city}:</b> {city}\n"
-            "\xf0\x9f\x97\xba <b>{lbl_region}:</b> {region}\n"
-            "\xf0\x9f\x92\xba <b>{lbl_seats}:</b> {seats}\n"
-            "\xf0\x9f\x93\x85 <b>{lbl_date}:</b> {date}\n"
-            "\xe2\x8f\xb0 <b>{lbl_deadline}:</b> {deadline}\n\n"
-            "\xf0\x9f\x94\x97 <a href='https://testcisia.it/studenti_tolc/login_sso.php'>"
-            "\xf0\x9f\x93\x8c {book}</a>"
+            "\U0001F6A8 <b>{title}</b>\n\n"
+            "\U0001F4CB <b>{lbl_exam}:</b> {exam}\n"
+            "\U0001F4CB <b>{lbl_fmt}:</b> {fmt}\n"
+            "\U0001F3EB <b>{lbl_uni}:</b> {uni}\n"
+            "\U0001F4CD <b>{lbl_city}:</b> {city}\n"
+            "\U0001F5FA <b>{lbl_region}:</b> {region}\n"
+            "\U0001F4BA <b>{lbl_seats}:</b> {seats}\n"
+            "\U0001F4C5 <b>{lbl_date}:</b> {date}\n"
+            "\u23F0 <b>{lbl_deadline}:</b> {deadline}\n\n"
+            "\U0001F517 <a href='https://testcisia.it/studenti_tolc/login_sso.php'>"
+            "\U0001F4CC {book}</a>"
         ).format(
             title=self.lang.t("alert_title"),
             lbl_exam=self.lang.t("exam"),
@@ -228,7 +228,13 @@ class TelegramNotifier:
             self._send_message(chat_id, self.lang.t("bot_not_subscribed"))
             return
 
-        exams_str = ", ".join(sub["exams"]) if sub["exams"] else self.lang.t("bot_status_all")
+        exams = sub["exams"]
+        if not exams:
+            exams_str = self.lang.t("bot_status_none")
+        elif "ALL" in exams:
+            exams_str = self.lang.t("bot_status_all")
+        else:
+            exams_str = ", ".join(exams)
         msg = self.lang.t("bot_status", active="Yes", exams=exams_str)
         self._send_message(chat_id, msg)
 
@@ -241,7 +247,7 @@ class TelegramNotifier:
         all_exams = get_all_exam_keys()
 
         if text.lower() == "all":
-            self.subscribers.set_exams(chat_id, [])
+            self.subscribers.set_exams(chat_id, ["ALL"])
             self._send_message(
                 chat_id,
                 self.lang.t("bot_exams_updated", exams=self.lang.t("bot_status_all")),
