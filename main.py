@@ -110,8 +110,19 @@ def run_bot(settings):
     print("  Bot is running. Press Ctrl+C to stop and return to menu.")
     print("-" * 60)
 
+    # IMPORTANT: Give the admin time to configure preferences (especially in
+    # multi-user mode) before we start scraping.
+    # This also helps reduce immediate burst traffic on Telegram.
+    startup_delay_seconds = 5 * 60
+    logger.info(lang.t("startup_delay", seconds=startup_delay_seconds))
+    time.sleep(startup_delay_seconds)
+
+    # In multi-user mode we need to scrape ALL exams and filter per user
+    # preference when sending notifications.
+    crawler_exam_type = "ALL" if settings["telegram"].get("multi_user") else settings["exam_type"]
+
     crawler = CisiaCrawler(
-        exam_type=settings["exam_type"],
+        exam_type=crawler_exam_type,
         format_type=settings["format_type"],
         language=settings["page_language"],
         logger=logger,
@@ -153,10 +164,13 @@ def run_bot(settings):
 
                     if telegram:
                         telegram.send_availability_alert(results)
+                        telegram.send_daily_no_spots(results)
                     if email_notifier:
                         email_notifier.send_availability_alert(results)
                 else:
                     logger.info(lang.t("no_seats"))
+                    if telegram:
+                        telegram.send_daily_no_spots(results)
 
             except Exception as e:
                 logger.error(lang.t("error_check", error=str(e)))
