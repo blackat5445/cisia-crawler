@@ -1,0 +1,23 @@
+exam_type: CEnT-S
+format_type: '@HOME'
+check_mode: fixed
+check_interval_minutes: 5
+random_interval_from: 60
+random_interval_to: 900
+language: en
+page_language: inglese
+telegram:
+  enabled: false
+  bot_token: ''
+  chat_id: ''
+  message_count: 5
+  multi_user: false
+email:
+  enabled: false
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  smtp_user: ''
+  smtp_password: ''
+  from_email: ''
+  to_email: ''
+  use_tls: true
