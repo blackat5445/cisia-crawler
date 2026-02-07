@@ -7,6 +7,7 @@ Captures user profile info (name, username, id, join date) on /start.
 import requests
 import threading
 import time as _time
+from collections import defaultdict
 
 from config.settings import get_all_exam_keys
 from utils.subscribers import SubscriberManager
@@ -24,17 +25,48 @@ class TelegramNotifier:
         self.multi_user = multi_user
         self.subscribers = SubscriberManager() if multi_user else None
         self._polling_thread = None
+        # chat_id -> exam_key -> last_sent_epoch_seconds
+        self._last_no_spots_sent = defaultdict(dict)
 
-    def _call_api(self, method, payload):
-        """Make a Telegram Bot API call."""
+    def _call_api(self, method, payload, max_retries=3):
+        """Make a Telegram Bot API call with basic rate-limit handling."""
         url = self.API_URL.format(token=self.bot_token, method=method)
-        try:
-            resp = requests.post(url, json=payload, timeout=15)
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as e:
-            self.logger.error(self.lang.t("telegram_error", error=str(e)))
-            return None
+
+        for attempt in range(max_retries):
+            try:
+                resp = requests.post(url, json=payload, timeout=20)
+
+                # Handle Telegram rate-limits (HTTP 429)
+                if resp.status_code == 429:
+                    try:
+                        data = resp.json() or {}
+                    except Exception:
+                        data = {}
+                    retry_after = 5
+                    if isinstance(data, dict):
+                        retry_after = (
+                            data.get("parameters", {}).get("retry_after")
+                            or retry_after
+                        )
+                    self.logger.warn(self.lang.t("telegram_rate_limited", seconds=retry_after))
+                    _time.sleep(int(retry_after) + 1)
+                    continue
+
+                # Transient server errors
+                if 500 <= resp.status_code < 600:
+                    _time.sleep(2)
+                    continue
+
+                resp.raise_for_status()
+                return resp.json()
+
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    self.logger.error(self.lang.t("telegram_error", error=str(e)))
+                    return None
+                _time.sleep(2)
+
+        return None
 
     def _send_message(self, chat_id, text):
         """Send a single message to a specific chat_id."""
@@ -49,8 +81,50 @@ class TelegramNotifier:
             return True
         return False
 
+    def _format_exam_summary(self, exam_key, seats):
+        """Format a single exam summary message (aggregated by city/region)."""
+        # Group by (region, city)
+        groups = {}
+        for s in seats:
+            key = (s.get("region", ""), s.get("city", ""))
+            g = groups.setdefault(key, {"seats": 0, "dates": set()})
+            # seats may be "---"; parse defensively
+            try:
+                g["seats"] += int(str(s.get("seats", "0")).strip())
+            except Exception:
+                # if we can't parse, count it as 1 "available"
+                g["seats"] += 1
+            d = str(s.get("date", "")).strip()
+            if d:
+                g["dates"].add(d)
+
+        lines = [
+            "\U0001F6A8 <b>{}</b>".format(exam_key),
+            "",
+        ]
+        for (region, city), g in sorted(groups.items(), key=lambda x: (x[0][0], x[0][1])):
+            lines.append(
+                "\U0001F4CD <b>{region}</b> – {city}: {seats} {lbl_seats}, {dates} {lbl_dates}".format(
+                    region=region or "-",
+                    city=city or "-",
+                    seats=g["seats"],
+                    lbl_seats=self.lang.t("seats"),
+                    dates=len(g["dates"]),
+                    lbl_dates=self.lang.t("dates"),
+                )
+            )
+
+        lines += [
+            "",
+            "\U0001F517 <a href='https://testcisia.it/studenti_tolc/login_sso.php'>\U0001F4CC {}</a>".format(
+                self.lang.t("book_now")
+            ),
+        ]
+
+        return "\n".join(lines)
+
     def _format_alert(self, seat):
-        """Format a single seat alert message (Telegram only - emojis here)."""
+        """Legacy per-seat alert formatter (kept for compatibility)."""
         return (
             "\U0001F6A8 <b>{title}</b>\n\n"
             "\U0001F4CB <b>{lbl_exam}:</b> {exam}\n"
@@ -84,42 +158,80 @@ class TelegramNotifier:
             book=self.lang.t("book_now"),
         )
 
+    def _get_recipient_ids(self):
+        """Return list of chat_ids to notify."""
+        recipients = []
+        if self.multi_user and self.subscribers:
+            recipients = [r["chat_id"] for r in self.subscribers.get_active_subscribers()]
+            if self.chat_id and str(self.chat_id) not in recipients:
+                recipients.append(str(self.chat_id))
+        else:
+            if self.chat_id:
+                recipients = [str(self.chat_id)]
+        return recipients
+
+    def _user_selected_exams(self, chat_id):
+        """Return list of selected exams for a user (may include ALL)."""
+        if not self.multi_user or not self.subscribers:
+            return ["ALL"]
+
+        rec = self.subscribers.get_subscriber(chat_id)
+        if rec and rec.get("active"):
+            return rec.get("exams", [])
+
+        # If the admin isn't subscribed, default admin to ALL.
+        if self.chat_id and str(chat_id) == str(self.chat_id):
+            return ["ALL"]
+
+        return []
+
     def send_availability_alert(self, results_by_exam):
-        """Send alerts for all available seats."""
-        for exam_key, seats in results_by_exam.items():
-            if not seats:
+        """Send ONE aggregated message per exam (per user)."""
+        recipients = self._get_recipient_ids()
+
+        for rid in recipients:
+            selected = self._user_selected_exams(rid)
+            if not selected:
                 continue
 
-            for seat in seats:
-                message = self._format_alert(seat)
+            wants_all = "ALL" in selected
 
-                # Always notify admin
-                if self.chat_id:
-                    for i in range(self.message_count):
-                        self._send_message(self.chat_id, message)
-                        self.logger.info(
-                            self.lang.t("telegram_repeat", current=i + 1, total=self.message_count)
-                        )
+            for exam_key, seats in results_by_exam.items():
+                if not seats:
+                    continue
+                if not wants_all and exam_key not in selected:
+                    continue
 
-                # Notify subscribers in multi-user mode
-                if self.multi_user and self.subscribers:
-                    for sub in self.subscribers.get_active_subscribers():
-                        sub_id = sub["chat_id"]
-                        if sub_id == str(self.chat_id):
-                            continue
+                message = self._format_exam_summary(exam_key, seats)
+                self._send_message(rid, message)
+                _time.sleep(0.2)
 
-                        if not self.subscribers.wants_exam(sub_id, exam_key):
-                            self.logger.debug(
-                                self.lang.t("telegram_subscriber_skip",
-                                            chat_id=sub_id, exam=exam_key)
-                            )
-                            continue
+    def send_daily_no_spots(self, results_by_exam, hours=24):
+        """Send a daily 'still running' message per exam when no seats are found."""
+        now = int(_time.time())
+        interval = int(hours * 3600)
+        recipients = self._get_recipient_ids()
 
-                        for i in range(self.message_count):
-                            self._send_message(sub_id, message)
-                        self.logger.info(
-                            self.lang.t("telegram_subscriber_sent", chat_id=sub_id)
-                        )
+        for rid in recipients:
+            selected = self._user_selected_exams(rid)
+            if not selected:
+                continue
+
+            exams_to_check = get_all_exam_keys() if "ALL" in selected else selected
+
+            for exam_key in exams_to_check:
+                seats = results_by_exam.get(exam_key, [])
+                if seats:
+                    continue
+
+                last = self._last_no_spots_sent[str(rid)].get(exam_key, 0)
+                if now - int(last) < interval:
+                    continue
+
+                msg = self.lang.t("daily_no_spots", exam=exam_key)
+                self._send_message(rid, msg)
+                self._last_no_spots_sent[str(rid)][exam_key] = now
+                _time.sleep(0.2)
 
     def test_connection(self):
         """Send a test message to the admin to verify the bot works."""
