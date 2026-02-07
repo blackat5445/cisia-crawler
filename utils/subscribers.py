@@ -1,6 +1,11 @@
 """
 Subscriber persistence for multi-user Telegram mode.
 Stores subscribers, their exam preferences, and profile info in a JSON file.
+
+Exam preference logic:
+  - exams = []         -> user has NOT chosen yet, receives NOTHING
+  - exams = ["ALL"]    -> user wants ALL exams
+  - exams = ["CEnT-S"] -> user wants only those specific exams
 """
 
 import json
@@ -26,7 +31,7 @@ class SubscriberManager:
         "last_name": "Doe",
         "joined_at": "2026-02-07 15:30:00",
         "active": true,
-        "exams": ["CEnT-S", "TOLC-I"]   // empty list = all exams
+        "exams": []
     }
     """
 
@@ -52,8 +57,9 @@ class SubscriberManager:
     def subscribe(self, chat_id, user_info=None):
         """
         Add or reactivate a subscriber.
-        user_info is a dict with keys: user_id, username, first_name, last_name
-        Returns True if this is a new subscriber.
+        New subscribers start with exams=[] which means they must
+        use /exams to choose what they want. They receive NOTHING
+        until they select exams.
         """
         chat_id = str(chat_id)
         with self._lock:
@@ -70,6 +76,7 @@ class SubscriberManager:
                 "last_name": info.get("last_name", existing.get("last_name", "")),
                 "joined_at": existing.get("joined_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                 "active": True,
+                # Keep existing exam choices if re-subscribing, otherwise empty
                 "exams": existing.get("exams", []),
             }
             self._save()
@@ -83,7 +90,12 @@ class SubscriberManager:
                 self._save()
 
     def set_exams(self, chat_id, exams):
-        """Set exam preferences. Empty list means all exams."""
+        """
+        Set exam preferences.
+        exams=["ALL"] means all exams.
+        exams=["CEnT-S", "TOLC-I"] means only those.
+        exams=[] means nothing selected (no notifications).
+        """
         chat_id = str(chat_id)
         with self._lock:
             if chat_id in self._data:
@@ -105,11 +117,24 @@ class SubscriberManager:
             return list(self._data.values())
 
     def wants_exam(self, chat_id, exam_type):
-        """Check if subscriber wants notifications for a given exam."""
+        """
+        Check if subscriber wants notifications for a given exam.
+
+        Returns True only if:
+          - subscriber is active AND
+          - exams contains "ALL" OR exams contains the specific exam_type
+
+        Returns False if:
+          - subscriber inactive, not found, or exams is empty
+        """
         chat_id = str(chat_id)
-        rec = self._data.get(chat_id)
-        if not rec or not rec["active"]:
-            return False
-        if not rec["exams"]:
-            return True
-        return exam_type in rec["exams"]
+        with self._lock:
+            rec = self._data.get(chat_id)
+            if not rec or not rec["active"]:
+                return False
+            exams = rec.get("exams", [])
+            if not exams:
+                return False
+            if "ALL" in exams:
+                return True
+            return exam_type in exams
