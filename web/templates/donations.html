@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "sidebar.html" import sidebar %}
+{% block title %}Donations{% endblock %}
+{% block body %}
+<div class="layout">
+    {{ sidebar("donations", is_admin) }}
+    <div class="main">
+        <div class="page-hdr"><h1>Donations</h1><p>Verify to grant Premium, or reject invalid claims.</p></div>
+        <div class="card">
+            <div class="card-hdr">All Donations ({{ donations|length }})</div>
+            {% if donations %}
+            <div class="table-wrap"><table>
+                <thead><tr><th>Name</th><th>Username</th><th>Chat ID</th><th>TX ID</th><th>Date</th><th>Status</th>{% if is_admin %}<th>Actions</th>{% endif %}</tr></thead>
+                <tbody>
+                {% for d in donations %}
+                <tr id="row-{{ d.chat_id }}">
+                    <td style="font-weight:500">{{ d.first_name }} {{ d.last_name }}</td>
+                    <td>{% if d.username %}<span class="text-muted">@</span>{{ d.username }}{% else %}<span class="text-light">-</span>{% endif %}</td>
+                    <td class="mono">{{ d.chat_id }}</td>
+                    <td class="mono" style="max-width:160px;overflow:hidden;text-overflow:ellipsis" title="{{ d.transaction_id }}">{{ d.transaction_id }}</td>
+                    <td class="text-muted" style="font-size:12px;white-space:nowrap">{{ d.donated_at }}</td>
+                    <td><span class="badge {{ 'badge-green' if d.verified else 'badge-yellow' }}" id="st-{{ d.chat_id }}">{{ 'Premium' if d.verified else 'Pending' }}</span></td>
+                    {% if is_admin %}
+                    <td><div class="action-btns" id="act-{{ d.chat_id }}">
+                        {% if not d.verified %}
+                        <button class="btn btn-green btn-sm" onclick="donAction('{{ d.chat_id }}','verify')">✓ Verify</button>
+                        <button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="donAction('{{ d.chat_id }}','reject')">✕ Reject</button>
+                        {% else %}<span class="text-light" style="font-size:12px">Done</span>{% endif %}
+                    </div></td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+            {% else %}
+            <div class="empty-state"><div class="e-icon">💰</div><p>No donations yet.</p></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+async function donAction(id,action){
+    const msg=action==='verify'?'Verify and grant Premium?':'Reject and remove?';
+    if(!confirm(msg))return;
+    const r=await fetch('/api/donation/'+id+'/'+action,{method:'POST'});
+    const d=await r.json();
+    if(d.ok){
+        if(action==='verify'){
+            document.getElementById('st-'+id).className='badge badge-green';
+            document.getElementById('st-'+id).textContent='Premium';
+        }else{
+            document.getElementById('row-'+id).style.opacity='.3';
+            document.getElementById('st-'+id).className='badge badge-red';
+            document.getElementById('st-'+id).textContent='Rejected';
+        }
+        document.getElementById('act-'+id).innerHTML='<span class="text-light" style="font-size:12px">Done</span>';
+    }else{alert(d.message)}
+}
+</script>
+{% endblock %}

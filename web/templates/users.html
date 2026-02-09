@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "sidebar.html" import sidebar %}
+{% block title %}Users{% endblock %}
+{% block body %}
+<div class="layout">
+    {{ sidebar("users", is_admin) }}
+    <div class="main">
+        <div class="page-hdr" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+            <div><h1>Users</h1><p>Web panel user accounts.</p></div>
+            <a href="{{ url_for('create_user') }}" class="btn btn-red">+ New User</a>
+        </div>
+        <div class="card">
+            <div class="card-hdr">Panel Users</div>
+            {% if users %}
+            <div class="table-wrap"><table>
+                <thead><tr><th>Username</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+                <tbody>
+                {% for u in users %}
+                <tr id="urow-{{ u.username }}">
+                    <td style="font-weight:500">{{ u.username }}</td>
+                    <td><span class="badge {{ 'badge-red' if u.role=='admin' else 'badge-gray' }}">{{ u.role }}</span></td>
+                    <td class="text-muted" style="font-size:12px">{{ u.created_at }}</td>
+                    <td><button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="delUser('{{ u.username }}')">Delete</button></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+            {% else %}
+            <div class="empty-state"><div class="e-icon">👤</div><p>No extra users. Only admin account exists.</p></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+async function delUser(u){
+    if(!confirm('Delete user '+u+'?'))return;
+    const r=await fetch('/api/users/'+u+'/delete',{method:'POST'});
+    if((await r.json()).ok){document.getElementById('urow-'+u).remove()}
+}
+</script>
+{% endblock %}

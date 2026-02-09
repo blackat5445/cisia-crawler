@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "sidebar.html" import sidebar %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+<div class="layout">
+    {{ sidebar("dashboard", is_admin) }}
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}{% for c, m in messages %}<div class="flash flash-{{ c }}">{{ m }}</div>{% endfor %}{% endwith %}
+        <div class="page-hdr" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+            <div><h1>Dashboard</h1><p>Overview of your CISIA CRAWLER bot.</p></div>
+            {% if is_admin %}
+            <div style="display:flex;align-items:center;gap:10px">
+                <div class="bot-pill {{ 'running' if stats.bot_running else 'stopped' }}" id="bot-pill">
+                    <span class="dot"></span><span id="bot-label">{{ 'Running' if stats.bot_running else 'Stopped' }}</span>
+                </div>
+                <button class="btn btn-green btn-sm" id="btn-start" onclick="botAction('start')" {{ 'style=display:none' if stats.bot_running }}>▶ Start</button>
+                <button class="btn btn-outline btn-sm" style="{{ '' if stats.bot_running else 'display:none' }};color:var(--red)" id="btn-stop" onclick="botAction('stop')">⏹ Stop</button>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card"><div class="s-label">Subscribers</div><div class="s-val">{{ total_subs }}</div></div>
+            <div class="stat-card"><div class="s-label">Active</div><div class="s-val">{{ active_count }}</div></div>
+            <div class="stat-card green"><div class="s-label">Verified</div><div class="s-val">{{ verified_count }}</div></div>
+            <div class="stat-card accent"><div class="s-label">Pending Donations</div><div class="s-val">{{ pending_donations }}</div></div>
+            <div class="stat-card"><div class="s-label">Premium</div><div class="s-val">{{ premium_count }}</div></div>
+            <div class="stat-card"><div class="s-label">Total Crawls</div><div class="s-val">{{ stats.total_crawls }}</div></div>
+            <div class="stat-card accent"><div class="s-label">Total Errors</div><div class="s-val">{{ stats.total_errors }}</div></div>
+            <div class="stat-card"><div class="s-label">Seats Found</div><div class="s-val">{{ stats.total_seats_found }}</div></div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-hdr">Crawls (14 days)</div>
+                <div class="card-body"><div class="chart-container"><canvas id="crawlChart"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-hdr">Errors (14 days)</div>
+                <div class="card-body"><div class="chart-container"><canvas id="errorChart"></canvas></div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-hdr">Bot Info</div>
+            <div class="card-body">
+                <div class="grid-2">
+                    <div>
+                        <table style="font-size:13px">
+                            <tr><td style="padding:5px 14px 5px 0;color:var(--text-muted)">Status</td><td><span class="badge {{ 'badge-green' if stats.bot_running else 'badge-gray' }}">{{ 'Running' if stats.bot_running else 'Stopped' }}</span></td></tr>
+                            <tr><td style="padding:5px 14px 5px 0;color:var(--text-muted)">Started At</td><td>{{ stats.started_at or '—' }}</td></tr>
+                            <tr><td style="padding:5px 14px 5px 0;color:var(--text-muted)">Last Crawl</td><td>{{ stats.last_crawl_at or '—' }}</td></tr>
+                            <tr><td style="padding:5px 14px 5px 0;color:var(--text-muted)">Last Error</td><td style="color:var(--red)">{{ stats.last_error_msg[:80] if stats.last_error_msg else '—' }}</td></tr>
+                        </table>
+                    </div>
+                    <div>
+                        <table style="font-size:13px">
+                            <tr><td style="padding:5px 14px 5px 0;color:var(--text-muted)">Telegram</td><td><span class="badge {{ 'badge-green' if settings.telegram.enabled else 'badge-gray' }}">{{ 'ON' if settings.telegram.enabled else 'OFF' }}</span></td></tr>
+                            <tr><td style="padding:5px 14px 5px 0;color:var(--text-muted)">Multi-user</td><td><span class="badge {{ 'badge-green' if settings.telegram.multi_user else 'badge-gray' }}">{{ 'ON' if settings.telegram.multi_user else 'OFF' }}</span></td></tr>
+                            <tr><td style="padding:5px 14px 5px 0;color:var(--text-muted)">Exam Type</td><td style="font-weight:600">{{ settings.exam_type }}</td></tr>
+                            <tr><td style="padding:5px 14px 5px 0;color:var(--text-muted)">Startup Delay</td><td>{{ settings.get('startup_delay_seconds', 300) }}s</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const daily = {{ daily_data|safe }};
+const labels = daily.map(d => d.date.slice(5));
+new Chart(document.getElementById('crawlChart'),{type:'bar',data:{labels,datasets:[{label:'Crawls',data:daily.map(d=>d.crawls),backgroundColor:'rgba(220,38,38,.15)',borderColor:'#DC2626',borderWidth:1.5,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{grid:{display:false}}}}});
+new Chart(document.getElementById('errorChart'),{type:'line',data:{labels,datasets:[{label:'Errors',data:daily.map(d=>d.errors),borderColor:'#DC2626',backgroundColor:'rgba(220,38,38,.08)',fill:true,tension:.3,pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{grid:{display:false}}}}});
+
+async function botAction(action){
+    try{
+        const r=await fetch('/api/bot/'+action,{method:'POST'});
+        const d=await r.json();
+        if(d.ok){location.reload()}else{alert(d.message)}
+    }catch(e){alert('Error: '+e.message)}
+}
+</script>
+{% endblock %}

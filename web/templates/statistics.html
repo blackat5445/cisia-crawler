@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "sidebar.html" import sidebar %}
+{% block title %}Statistics{% endblock %}
+{% block body %}
+<div class="layout">
+    {{ sidebar("statistics", is_admin) }}
+    <div class="main">
+        <div class="page-hdr"><h1>Statistics</h1><p>Detailed analytics and group membership data.</p></div>
+
+        <div class="stats-grid">
+            <div class="stat-card"><div class="s-label">Total Crawls</div><div class="s-val">{{ stats.total_crawls }}</div></div>
+            <div class="stat-card accent"><div class="s-label">Total Errors</div><div class="s-val">{{ stats.total_errors }}</div></div>
+            <div class="stat-card green"><div class="s-label">Seats Found</div><div class="s-val">{{ stats.total_seats_found }}</div></div>
+            <div class="stat-card"><div class="s-label">Subscribers</div><div class="s-val">{{ all_subs|length }}</div></div>
+            <div class="stat-card"><div class="s-label">Total Donations</div><div class="s-val">{{ total_donations }}</div></div>
+            <div class="stat-card green"><div class="s-label">Verified Donations</div><div class="s-val">{{ verified_donations }}</div></div>
+            <div class="stat-card accent"><div class="s-label">Pending Donations</div><div class="s-val">{{ pending_donations }}</div></div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-hdr">Daily Crawls (30 days)</div>
+                <div class="card-body"><div class="chart-container"><canvas id="crawlChart30"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-hdr">Daily Errors (30 days)</div>
+                <div class="card-body"><div class="chart-container"><canvas id="errorChart30"></canvas></div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-hdr">Crawls vs Errors</div>
+            <div class="card-body"><div class="chart-container"><canvas id="combinedChart"></canvas></div></div>
+        </div>
+
+        <div class="card">
+            <div class="card-hdr">Exam Groups</div>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Exam</th><th>Group Configured</th><th>Verified Members</th></tr></thead>
+                <tbody>
+                {% for g in group_stats %}
+                <tr>
+                    <td style="font-weight:600">{{ g.exam }}</td>
+                    <td>{% if g.configured %}<span class="badge badge-green">Yes</span>{% else %}<span class="badge badge-gray">No</span>{% endif %}</td>
+                    <td>{{ g.members }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+        </div>
+
+        <div class="card">
+            <div class="card-hdr">Subscriber Breakdown</div>
+            <div class="card-body">
+                <div class="chart-container" style="height:220px"><canvas id="subPie"></canvas></div>
+            </div>
+        </div>
+
+        {% if stats.error_history %}
+        <div class="card">
+            <div class="card-hdr">Recent Errors (last {{ stats.error_history|length }})</div>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Time</th><th>Message</th></tr></thead>
+                <tbody>
+                {% for e in stats.error_history|reverse %}
+                <tr><td class="text-muted" style="font-size:12px;white-space:nowrap">{{ e.time }}</td><td style="font-size:12px;color:var(--red)">{{ e.message }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const daily={{ daily_data|safe }};
+const lbl=daily.map(d=>d.date.slice(5));
+const cData=daily.map(d=>d.crawls);
+const eData=daily.map(d=>d.errors);
+const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{grid:{display:false}}}};
+
+new Chart(document.getElementById('crawlChart30'),{type:'bar',data:{labels:lbl,datasets:[{data:cData,backgroundColor:'rgba(220,38,38,.15)',borderColor:'#DC2626',borderWidth:1.5,borderRadius:3}]},options:opts});
+new Chart(document.getElementById('errorChart30'),{type:'bar',data:{labels:lbl,datasets:[{data:eData,backgroundColor:'rgba(220,38,38,.3)',borderColor:'#DC2626',borderWidth:1.5,borderRadius:3}]},options:opts});
+new Chart(document.getElementById('combinedChart'),{type:'line',data:{labels:lbl,datasets:[{label:'Crawls',data:cData,borderColor:'#71717A',backgroundColor:'rgba(113,113,122,.08)',fill:true,tension:.3},{label:'Errors',data:eData,borderColor:'#DC2626',backgroundColor:'rgba(220,38,38,.08)',fill:true,tension:.3}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{grid:{display:false}}}}});
+
+const totalSubs={{ all_subs|length }};
+const verified={{ all_subs|selectattr('github_verified')|list|length }};
+const active={{ all_subs|selectattr('active')|list|length }};
+const inactive=totalSubs-active;
+new Chart(document.getElementById('subPie'),{type:'doughnut',data:{labels:['Verified','Unverified','Inactive'],datasets:[{data:[verified,active-verified,inactive],backgroundColor:['#16A34A','#CA8A04','#D4D4D8'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+</script>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "sidebar.html" import sidebar %}
+{% block title %}Members{% endblock %}
+{% block body %}
+<div class="layout">
+    {{ sidebar("members", is_admin) }}
+    <div class="main">
+        <div class="page-hdr"><h1>Members</h1><p>All bot subscribers with details.</p></div>
+        <div class="card">
+            <div class="card-hdr">Subscribers ({{ members|length }})</div>
+            {% if members %}
+            <div class="table-wrap"><table>
+                <thead><tr><th>Name</th><th>Username</th><th>Chat ID</th><th>GitHub</th><th>Status</th><th>Premium</th><th>Joined</th></tr></thead>
+                <tbody>
+                {% for m in members %}
+                <tr>
+                    <td style="font-weight:500">{{ m.first_name }} {{ m.last_name }}</td>
+                    <td>{% if m.username %}<span class="text-muted">@</span>{{ m.username }}{% else %}<span class="text-light">—</span>{% endif %}</td>
+                    <td class="mono">{{ m.chat_id }}</td>
+                    <td>{% if m.github_verified %}<span class="badge badge-green">{{ m.github_username or '✓' }}</span>{% else %}<span class="badge badge-gray">No</span>{% endif %}</td>
+                    <td>{% if m.active %}<span class="badge badge-green">Active</span>{% else %}<span class="badge badge-red">Inactive</span>{% endif %}</td>
+                    <td>{% if m.is_premium %}<span class="badge badge-yellow">⭐ Premium</span>{% else %}<span class="text-light">—</span>{% endif %}</td>
+                    <td class="text-muted" style="font-size:12px">{{ m.joined_at }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+            {% else %}
+            <div class="empty-state"><div class="e-icon">👤</div><p>No subscribers yet.</p></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

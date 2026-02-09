@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "sidebar.html" import sidebar %}
+{% block title %}Settings{% endblock %}
+{% block body %}
+<div class="layout">
+    {{ sidebar("settings", is_admin) }}
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}{% for c, m in messages %}<div class="flash flash-{{ c }}">{{ m }}</div>{% endfor %}{% endwith %}
+        <div class="page-hdr"><h1>Settings</h1><p>Configure your bot. Restart for changes to take effect.</p></div>
+        <form method="POST">
+            <div class="card" style="margin-bottom:18px">
+                <div class="card-hdr">Crawler</div>
+                <div class="card-body">
+                    <div class="grid-3">
+                        <div class="form-group"><label>Exam Type</label><select name="exam_type"><option value="ALL" {{ 'selected' if settings.exam_type=='ALL' }}>ALL</option>{% for e in all_exams %}<option value="{{ e }}" {{ 'selected' if settings.exam_type==e }}>{{ e }}</option>{% endfor %}</select></div>
+                        <div class="form-group"><label>Format</label><select name="format_type"><option value="@HOME" {{ 'selected' if settings.format_type=='@HOME' }}>@HOME</option><option value="@UNI" {{ 'selected' if settings.format_type=='@UNI' }}>@UNI</option></select></div>
+                        <div class="form-group"><label>Check Mode</label><select name="check_mode"><option value="fixed" {{ 'selected' if settings.check_mode=='fixed' }}>Fixed</option><option value="random" {{ 'selected' if settings.check_mode=='random' }}>Random</option></select></div>
+                    </div>
+                    <div class="grid-3">
+                        <div class="form-group"><label>Fixed Interval (min)</label><input type="number" name="check_interval_minutes" value="{{ settings.check_interval_minutes }}" min="1" max="60"></div>
+                        <div class="form-group"><label>Random From (sec)</label><input type="number" name="random_interval_from" value="{{ settings.random_interval_from }}"></div>
+                        <div class="form-group"><label>Random To (sec)</label><input type="number" name="random_interval_to" value="{{ settings.random_interval_to }}"></div>
+                    </div>
+                    <div class="grid-3">
+                        <div class="form-group"><label>Language</label><select name="language"><option value="en" {{ 'selected' if settings.language=='en' }}>English</option><option value="it" {{ 'selected' if settings.language=='it' }}>Italian</option></select></div>
+                        <div class="form-group"><label>Page Language</label><select name="page_language"><option value="inglese" {{ 'selected' if settings.page_language=='inglese' }}>English</option><option value="italiano" {{ 'selected' if settings.page_language=='italiano' }}>Italian</option></select></div>
+                        <div class="form-group"><label>Startup Delay (sec)</label><input type="number" name="startup_delay_seconds" value="{{ settings.get('startup_delay_seconds', 300) }}" min="0" max="3600"><div class="hint">Delay before crawling starts. Set 0 to skip.</div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom:18px">
+                <div class="card-hdr">Telegram</div>
+                <div class="card-body">
+                    <div class="toggle-row"><label>Enabled</label><input type="checkbox" name="tg_enabled" class="toggle" {{ 'checked' if settings.telegram.enabled }}></div>
+                    <div class="toggle-row" style="margin-bottom:14px"><label>Multi-user</label><input type="checkbox" name="tg_multi_user" class="toggle" {{ 'checked' if settings.telegram.multi_user }}></div>
+                    <div class="grid-2">
+                        <div class="form-group"><label>Bot Token</label><input type="text" name="tg_bot_token" class="mono-input" value="{{ settings.telegram.bot_token }}"></div>
+                        <div class="form-group"><label>Admin Chat ID</label><input type="text" name="tg_chat_id" class="mono-input" value="{{ settings.telegram.chat_id }}"></div>
+                    </div>
+                    <div class="grid-2">
+                        <div class="form-group"><label>Messages per Alert</label><input type="number" name="tg_message_count" value="{{ settings.telegram.message_count }}" min="1" max="50"></div>
+                        <div class="form-group"><label>GitHub Token</label><input type="text" name="tg_github_token" class="mono-input" value="{{ settings.telegram.get('github_token','') }}" placeholder="ghp_..."><div class="hint">Optional. 5000 req/hr vs 60.</div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom:18px">
+                <div class="card-hdr">Exam Group IDs</div>
+                <div class="card-body">
+                    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Telegram group chat IDs. Use negative numbers for supergroups.</p>
+                    <div class="grid-2">
+                    {% for e in all_exams %}
+                        {% set gid = settings.exam_group_ids.get(e, '') %}
+                        <div class="form-group"><label>{{ e }} {% if gid %}<span class="badge badge-green" style="margin-left:4px">Set</span>{% else %}<span class="badge badge-gray" style="margin-left:4px">—</span>{% endif %}</label><input type="text" name="group_{{ e.replace('-','_') }}" class="mono-input" value="{{ gid }}" placeholder="-100..."></div>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom:18px">
+                <div class="card-hdr">Premium Group</div>
+                <div class="card-body">
+                    <div class="form-group"><label>Premium Group Chat ID {% if settings.get('premium_group_id') %}<span class="badge badge-green" style="margin-left:4px">Set</span>{% else %}<span class="badge badge-gray" style="margin-left:4px">—</span>{% endif %}</label><input type="text" name="premium_group_id" class="mono-input" value="{{ settings.get('premium_group_id','') }}" placeholder="-100..."></div>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;padding-top:4px"><button type="submit" class="btn btn-red">Save Settings</button><a href="{{ url_for('settings_page') }}" class="btn btn-outline">Reset</a></div>
+        </form>
+    </div>
+</div>
+{% endblock %}
