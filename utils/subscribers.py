@@ -97,13 +97,34 @@ class SubscriberManager:
                 self._save()
 
     def set_github_verified(self, chat_id, github_username):
-        """Mark a subscriber as GitHub-verified."""
+        """Mark a subscriber as GitHub-verified.
+        Returns False if the GitHub username is already used by another subscriber.
+        """
         chat_id = str(chat_id)
         with self._lock:
+            # Check if this GitHub username is already claimed by another user
+            gh_lower = github_username.lower().strip()
+            for cid, rec in self._data.items():
+                if cid != chat_id and rec.get("github_verified") and rec.get("github_username", "").lower().strip() == gh_lower:
+                    return False  # Already taken
+
             if chat_id in self._data:
                 self._data[chat_id]["github_verified"] = True
                 self._data[chat_id]["github_username"] = github_username
                 self._save()
+                return True
+            return False
+
+    def is_github_username_taken(self, github_username, exclude_chat_id=None):
+        """Check if a GitHub username is already verified by another user."""
+        gh_lower = github_username.lower().strip()
+        with self._lock:
+            for cid, rec in self._data.items():
+                if exclude_chat_id and str(cid) == str(exclude_chat_id):
+                    continue
+                if rec.get("github_verified") and rec.get("github_username", "").lower().strip() == gh_lower:
+                    return True
+            return False
 
     def set_interval(self, chat_id, minutes):
         """Store a user's preferred check interval."""
