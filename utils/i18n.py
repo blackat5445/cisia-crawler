@@ -105,7 +105,10 @@ TRANSLATIONS = {
             "\U0001F4B0 <b>Support CISIA CRAWLER</b>\n\n"
             "Donate any amount (min $1) via <b>USDT (TRC20)</b>:\n\n"
             "<code>{address}</code>\n\n"
-            "Donators get <b>early access</b> to new versions!\n\n"
+            "Donating makes you a <b>\u2B50 Premium</b> member!\n\n"
+            "\u2022 Access to a <b>private Premium channel &amp; group</b>\n"
+            "\u2022 <b>Faster check intervals</b> (30s \u2013 1 min)\n"
+            "\u2022 <b>Early access</b> to new versions\n\n"
             "After sending, submit your transaction:\n"
             "<code>/donate your_transaction_id</code>"
         ),
@@ -113,7 +116,27 @@ TRANSLATIONS = {
             "\u2705 <b>Thank you!</b>\n\n"
             "Your donation has been recorded.\n"
             "TX ID: <code>{tx_id}</code>\n\n"
-            "The admin will verify it and add you to the early-access group."
+            "The admin will verify your transaction.\n"
+            "Once verified you will become <b>\u2B50 Premium</b> and receive "
+            "an invite link to the Premium group."
+        ),
+        "donate_verified_user": (
+            "\U0001F389 <b>Congratulations!</b>\n\n"
+            "Your donation has been verified. You are now a <b>\u2B50 Premium</b> member!\n\n"
+            "Benefits:\n"
+            "\u2022 Private Premium channel &amp; group\n"
+            "\u2022 Faster check intervals (30s \u2013 1 min)\n"
+            "\u2022 Early access to new versions"
+        ),
+        "donate_rejected_user": (
+            "\u274C Your donation claim could not be verified.\n\n"
+            "If you believe this is a mistake, please contact the admin "
+            "or submit a new transaction with /donate."
+        ),
+        "premium_invite_link": (
+            "\U0001F517 <b>Premium Group Invite</b>\n\n"
+            "{link}\n\n"
+            "\u26A0\uFE0F This link expires in <b>1 minute</b> and can only be used once."
         ),
 
         # Exam selection & invite links
@@ -144,8 +167,7 @@ TRANSLATIONS = {
             "/github &lt;username&gt; \u2013 Verify your GitHub star\n"
             "/exam \u2013 Get invite link to an exam group\n"
             "/status \u2013 Show your subscription info\n"
-            "/interval &lt;min&gt; \u2013 Set check interval (1-60)\n"
-            "/donate \u2013 Support the project (USDT TRC20)\n"
+            "/donate \u2013 Support the project &amp; become Premium\n"
             "/donate &lt;tx_id&gt; \u2013 Submit donation transaction\n"
             "/stop \u2013 Unsubscribe\n"
             "/help \u2013 Show this message"
@@ -256,7 +278,10 @@ TRANSLATIONS = {
             "\U0001F4B0 <b>Supporta CISIA CRAWLER</b>\n\n"
             "Dona qualsiasi importo (min $1) tramite <b>USDT (TRC20)</b>:\n\n"
             "<code>{address}</code>\n\n"
-            "I donatori ottengono <b>accesso anticipato</b> alle nuove versioni!\n\n"
+            "Donando diventi un membro <b>\u2B50 Premium</b>!\n\n"
+            "\u2022 Accesso a <b>canale e gruppo Premium privato</b>\n"
+            "\u2022 <b>Intervalli di controllo piu' rapidi</b> (30s \u2013 1 min)\n"
+            "\u2022 <b>Accesso anticipato</b> alle nuove versioni\n\n"
             "Dopo aver inviato, registra la tua transazione:\n"
             "<code>/donate tuo_id_transazione</code>"
         ),
@@ -264,7 +289,27 @@ TRANSLATIONS = {
             "\u2705 <b>Grazie!</b>\n\n"
             "La tua donazione e' stata registrata.\n"
             "TX ID: <code>{tx_id}</code>\n\n"
-            "L'admin verifichera' e ti aggiungera' al gruppo accesso anticipato."
+            "L'admin verifichera' la tua transazione.\n"
+            "Una volta verificata diventerai <b>\u2B50 Premium</b> e riceverai "
+            "un link d'invito al gruppo Premium."
+        ),
+        "donate_verified_user": (
+            "\U0001F389 <b>Congratulazioni!</b>\n\n"
+            "La tua donazione e' stata verificata. Sei ora un membro <b>\u2B50 Premium</b>!\n\n"
+            "Vantaggi:\n"
+            "\u2022 Canale e gruppo Premium privato\n"
+            "\u2022 Intervalli di controllo piu' rapidi (30s \u2013 1 min)\n"
+            "\u2022 Accesso anticipato alle nuove versioni"
+        ),
+        "donate_rejected_user": (
+            "\u274C La tua donazione non ha potuto essere verificata.\n\n"
+            "Se ritieni sia un errore, contatta l'admin "
+            "o invia una nuova transazione con /donate."
+        ),
+        "premium_invite_link": (
+            "\U0001F517 <b>Invito Gruppo Premium</b>\n\n"
+            "{link}\n\n"
+            "\u26A0\uFE0F Questo link scade in <b>1 minuto</b> e puo' essere usato una sola volta."
         ),
 
         "exam_select_prompt": (
@@ -292,8 +337,7 @@ TRANSLATIONS = {
             "/github &lt;username&gt; \u2013 Verifica la tua stella GitHub\n"
             "/exam \u2013 Ottieni link invito a un gruppo esame\n"
             "/status \u2013 Mostra info iscrizione\n"
-            "/interval &lt;min&gt; \u2013 Imposta intervallo (1-60)\n"
-            "/donate \u2013 Supporta il progetto (USDT TRC20)\n"
+            "/donate \u2013 Supporta il progetto e diventa Premium\n"
             "/donate &lt;tx_id&gt; \u2013 Invia transazione donazione\n"
             "/stop \u2013 Disiscriviti\n"
             "/help \u2013 Mostra questo messaggio"
