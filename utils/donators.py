@@ -92,3 +92,32 @@ class DonatorManager:
             if chat_id in self._data:
                 self._data[chat_id]["verified"] = verified
                 self._save()
+                return True
+            return False
+
+    def remove_donator(self, chat_id):
+        """Remove a donator record entirely (rejected by admin)."""
+        chat_id = str(chat_id)
+        with self._lock:
+            if chat_id in self._data:
+                del self._data[chat_id]
+                self._save()
+                return True
+            return False
+
+    def get_unverified_donators(self):
+        """Return list of donators whose transactions have not been verified yet."""
+        with self._lock:
+            return [r for r in self._data.values() if not r.get("verified")]
+
+    def get_verified_donators(self):
+        """Return list of donators whose transactions have been verified."""
+        with self._lock:
+            return [r for r in self._data.values() if r.get("verified")]
+
+    def is_verified_donator(self, chat_id):
+        """Check if a user is a verified (premium) donator."""
+        chat_id = str(chat_id)
+        with self._lock:
+            rec = self._data.get(chat_id)
+            return rec is not None and rec.get("verified", False)
