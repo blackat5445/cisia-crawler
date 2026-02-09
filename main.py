@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CISIA CRAWLER v1.1.0
+CISIA CRAWLER v1.2.1
 Author: Kasra Falahati
 https://github.com/blackat5445/cisia-crawler
 
@@ -19,13 +19,18 @@ from notifications.email_sender import EmailNotifier
 from utils.logger import Logger
 from utils.i18n import I18n
 from utils.scheduler import IntervalScheduler
+from utils.bot_stats import BotStats
 from utils.menu import (
     show_main_menu, settings_menu, test_telegram, test_email,
     show_about, show_donate, clear_screen,
 )
 
+# Global stats instance shared with web panel
+bot_stats = BotStats()
+
 
 def signal_handler(sig, frame):
+    bot_stats.set_running(False)
     print("\n\nCISIA CRAWLER stopped. Goodbye.")
     sys.exit(0)
 
@@ -73,11 +78,12 @@ def run_bot(settings):
     # Telegram
     telegram = None
     if settings["telegram"]["enabled"]:
-        # Load exam group IDs into the telegram module
-        from notifications.telegram_bot import EXAM_GROUP_IDS
+        from notifications.telegram_bot import EXAM_GROUP_IDS, PREMIUM_GROUP_ID as _PG
+        import notifications.telegram_bot as _tg_mod
         for exam_key, group_id in settings.get("exam_group_ids", {}).items():
             if group_id:
                 EXAM_GROUP_IDS[exam_key] = group_id
+        _tg_mod.PREMIUM_GROUP_ID = settings.get("premium_group_id", "")
 
         telegram = TelegramNotifier(
             bot_token=settings["telegram"]["bot_token"],
@@ -117,15 +123,16 @@ def run_bot(settings):
     print("  Bot is running. Press Ctrl+C to stop and return to menu.")
     print("-" * 60)
 
-    # IMPORTANT: Give the admin time to configure preferences (especially in
-    # multi-user mode) before we start scraping.
-    # This also helps reduce immediate burst traffic on Telegram.
-    startup_delay_seconds = 5 * 60
-    logger.info(lang.t("startup_delay", seconds=startup_delay_seconds))
-    time.sleep(startup_delay_seconds)
+    # Mark bot as running
+    import os
+    bot_stats.set_running(True, pid=os.getpid())
 
-    # In multi-user mode we need to scrape ALL exams and filter per user
-    # preference when sending notifications.
+    # Configurable startup delay
+    startup_delay = settings.get("startup_delay_seconds", 300)
+    if startup_delay > 0:
+        logger.info(lang.t("startup_delay", seconds=startup_delay))
+        time.sleep(startup_delay)
+
     crawler_exam_type = "ALL" if settings["telegram"].get("multi_user") else settings["exam_type"]
 
     crawler = CisiaCrawler(
@@ -140,12 +147,23 @@ def run_bot(settings):
 
     try:
         while True:
+            # Check if web panel requested stop
+            if not bot_stats.is_running():
+                logger.info("Bot stop requested via web panel.")
+                break
+
             check_count += 1
             logger.info(lang.t("check_number", n=check_count))
 
             try:
                 results = crawler.check_availability()
                 total_available = sum(len(seats) for seats in results.values())
+
+                # Record stats
+                bot_stats.record_crawl(
+                    seats_found=total_available,
+                    exams_checked=len(results),
+                )
 
                 if total_available > 0:
                     logger.success(lang.t("seats_found", count=total_available))
@@ -181,6 +199,7 @@ def run_bot(settings):
 
             except Exception as e:
                 logger.error(lang.t("error_check", error=str(e)))
+                bot_stats.record_error(str(e))
 
             wait = scheduler.next_seconds()
 
@@ -190,11 +209,18 @@ def run_bot(settings):
                 logger.info(lang.t("next_check_random", seconds=wait))
 
             print("-" * 60)
-            time.sleep(wait)
+
+            # Sleep in 1s increments to allow checking stop flag
+            for _ in range(int(wait)):
+                if not bot_stats.is_running():
+                    break
+                time.sleep(1)
 
     except KeyboardInterrupt:
+        pass
+    finally:
+        bot_stats.set_running(False)
         print("\n\n  Bot stopped. Returning to menu...\n")
-        return
 
 
 def main():
@@ -204,13 +230,11 @@ def main():
     settings = load_settings()
 
     while True:
-        # Re-register signal handler for menu mode (not exit on Ctrl+C from bot)
         signal.signal(signal.SIGINT, signal_handler)
 
         choice = show_main_menu(settings)
 
         if choice == "1":
-            # Override signal handler so Ctrl+C returns to menu instead of exiting
             signal.signal(signal.SIGINT, signal.default_int_handler)
             run_bot(settings)
         elif choice == "2":
@@ -228,6 +252,7 @@ def main():
             print("")
             print("  CISIA CRAWLER stopped. Goodbye.")
             print("")
+            bot_stats.set_running(False)
             sys.exit(0)
 
 
