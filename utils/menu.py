@@ -468,7 +468,7 @@ def show_about():
     print("  === ABOUT ===")
     print("")
     print("  Name      : CISIA CRAWLER")
-    print("  Version   : 1.1.0")
+    print("  Version   : 1.2.1")
     print("  Author    : Kasra Falahati")
     print("  License   : MIT")
     print("  GitHub    : {}".format(GITHUB_URL))
