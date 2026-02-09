@@ -66,6 +66,8 @@ DEFAULT_CONFIG = {
         "TOLC-SPS": "",
         "TOLC-SU": "",
     },
+    "premium_group_id": "",
+    "startup_delay_seconds": 300,
 }
 
 
@@ -133,7 +135,7 @@ def print_banner():
     """Print the application banner."""
     print("")
     print("  ================================================================")
-    print("   CISIA CRAWLER v1.1.0")
+    print("   CISIA CRAWLER v1.2.1")
     print("   Author: Kasra Falahati")
     print("   https://github.com/blackat5445/cisia-crawler")
     print("  ================================================================")
