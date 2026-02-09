@@ -1,11 +1,7 @@
 """
 Subscriber persistence for multi-user Telegram mode.
-Stores subscribers, their exam preferences, and profile info in a JSON file.
-
-Exam preference logic:
-  - exams = []         -> user has NOT chosen yet, receives NOTHING
-  - exams = ["ALL"]    -> user wants ALL exams
-  - exams = ["CEnT-S"] -> user wants only those specific exams
+Stores subscribers, their exam preferences, profile info,
+GitHub verification status, and preferred check interval.
 """
 
 import json
@@ -31,7 +27,10 @@ class SubscriberManager:
         "last_name": "Doe",
         "joined_at": "2026-02-07 15:30:00",
         "active": true,
-        "exams": []
+        "exams": [],
+        "github_verified": false,
+        "github_username": "",
+        "preferred_interval_minutes": 5
     }
     """
 
@@ -57,9 +56,8 @@ class SubscriberManager:
     def subscribe(self, chat_id, user_info=None):
         """
         Add or reactivate a subscriber.
-        New subscribers start with exams=[] which means they must
-        use /exams to choose what they want. They receive NOTHING
-        until they select exams.
+        New subscribers start with github_verified=False.
+        They must verify via /github before using the bot.
         """
         chat_id = str(chat_id)
         with self._lock:
@@ -76,8 +74,10 @@ class SubscriberManager:
                 "last_name": info.get("last_name", existing.get("last_name", "")),
                 "joined_at": existing.get("joined_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                 "active": True,
-                # Keep existing exam choices if re-subscribing, otherwise empty
                 "exams": existing.get("exams", []),
+                "github_verified": existing.get("github_verified", False),
+                "github_username": existing.get("github_username", ""),
+                "preferred_interval_minutes": existing.get("preferred_interval_minutes", 5),
             }
             self._save()
             return is_new
@@ -90,16 +90,27 @@ class SubscriberManager:
                 self._save()
 
     def set_exams(self, chat_id, exams):
-        """
-        Set exam preferences.
-        exams=["ALL"] means all exams.
-        exams=["CEnT-S", "TOLC-I"] means only those.
-        exams=[] means nothing selected (no notifications).
-        """
         chat_id = str(chat_id)
         with self._lock:
             if chat_id in self._data:
                 self._data[chat_id]["exams"] = exams
+                self._save()
+
+    def set_github_verified(self, chat_id, github_username):
+        """Mark a subscriber as GitHub-verified."""
+        chat_id = str(chat_id)
+        with self._lock:
+            if chat_id in self._data:
+                self._data[chat_id]["github_verified"] = True
+                self._data[chat_id]["github_username"] = github_username
+                self._save()
+
+    def set_interval(self, chat_id, minutes):
+        """Store a user's preferred check interval."""
+        chat_id = str(chat_id)
+        with self._lock:
+            if chat_id in self._data:
+                self._data[chat_id]["preferred_interval_minutes"] = minutes
                 self._save()
 
     def get_subscriber(self, chat_id):
@@ -117,16 +128,6 @@ class SubscriberManager:
             return list(self._data.values())
 
     def wants_exam(self, chat_id, exam_type):
-        """
-        Check if subscriber wants notifications for a given exam.
-
-        Returns True only if:
-          - subscriber is active AND
-          - exams contains "ALL" OR exams contains the specific exam_type
-
-        Returns False if:
-          - subscriber inactive, not found, or exams is empty
-        """
         chat_id = str(chat_id)
         with self._lock:
             rec = self._data.get(chat_id)
