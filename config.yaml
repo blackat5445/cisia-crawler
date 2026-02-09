@@ -38,3 +38,11 @@ exam_group_ids:
   TOLC-S: ''
   TOLC-SPS: ''
   TOLC-SU: ''
+
+# Premium group chat ID for verified donators.
+# The bot must be admin with full permissions in this group.
+premium_group_id: ''
+
+# Delay in seconds before the bot starts crawling after launch.
+# Gives time for Telegram subscribers to configure preferences.
+startup_delay_seconds: 300
