@@ -1,7 +1,14 @@
 """
-Telegram notification sender.
-Supports single admin mode and multi-user subscriber mode.
-Captures user profile info (name, username, id, join date) on /start.
+Telegram notification sender — v2.
+Group-based notifications, GitHub star gating, donation tracking,
+and auto-expiring invite links.
+
+Key changes from v1:
+  - Bot sends notifications to EXAM-SPECIFIC GROUPS (not individual users).
+  - Users must star the GitHub repo to unlock bot features.
+  - /donate command shows USDT TRC20 address; /donate <tx_id> records donation.
+  - /exam lets users pick an exam and receive a 1-minute invite link to the group.
+  - New members in groups are verified: kicked if they haven't starred the repo.
 """
 
 import requests
@@ -11,32 +18,60 @@ from collections import defaultdict
 
 from config.settings import get_all_exam_keys
 from utils.subscribers import SubscriberManager
+from utils.github_stars import GitHubStarChecker, GITHUB_REPO_URL
+from utils.donators import DonatorManager, USDT_TRC20_ADDRESS
+
+
+# ── Exam -> Group chat_id mapping ─────────────────────────────────────────
+# Fill in the actual group chat_ids after creating the groups.
+# Use negative numbers for supergroups (e.g. -1001234567890).
+EXAM_GROUP_IDS = {
+    "CEnT-S":   "",   # fill with group chat_id
+    "TOLC-AV":  "",
+    "TOLC-B":   "",
+    "TOLC-E":   "",
+    "TOLC-F":   "",
+    "TOLC-I":   "",
+    "TOLC-LP":  "",
+    "TOLC-PSI": "",
+    "TOLC-S":   "",
+    "TOLC-SPS": "",
+    "TOLC-SU":  "",
+}
 
 
 class TelegramNotifier:
     API_URL = "https://api.telegram.org/bot{token}/{method}"
 
-    def __init__(self, bot_token, chat_id, lang, logger, message_count=5, multi_user=False):
+    def __init__(self, bot_token, chat_id, lang, logger,
+                 message_count=5, multi_user=False, github_token=None):
         self.bot_token = bot_token
-        self.chat_id = chat_id
+        self.chat_id = chat_id            # admin chat_id
         self.lang = lang
         self.logger = logger
         self.message_count = message_count
         self.multi_user = multi_user
+
+        # Managers
         self.subscribers = SubscriberManager() if multi_user else None
+        self.github = GitHubStarChecker(github_token=github_token)
+        self.donators = DonatorManager()
+
         self._polling_thread = None
-        # chat_id -> exam_key -> last_sent_epoch_seconds
         self._last_no_spots_sent = defaultdict(dict)
 
-    def _call_api(self, method, payload, max_retries=3):
-        """Make a Telegram Bot API call with basic rate-limit handling."""
+    # ──────────────────────────────────────────────────────────────────────
+    # Low-level Telegram helpers
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _call_api(self, method, payload=None, max_retries=3):
+        """Make a Telegram Bot API call with rate-limit handling."""
         url = self.API_URL.format(token=self.bot_token, method=method)
 
         for attempt in range(max_retries):
             try:
-                resp = requests.post(url, json=payload, timeout=20)
+                resp = requests.post(url, json=payload or {}, timeout=20)
 
-                # Handle Telegram rate-limits (HTTP 429)
                 if resp.status_code == 429:
                     try:
                         data = resp.json() or {}
@@ -52,7 +87,6 @@ class TelegramNotifier:
                     _time.sleep(int(retry_after) + 1)
                     continue
 
-                # Transient server errors
                 if 500 <= resp.status_code < 600:
                     _time.sleep(2)
                     continue
@@ -68,31 +102,78 @@ class TelegramNotifier:
 
         return None
 
-    def _send_message(self, chat_id, text):
+    def _send_message(self, chat_id, text, parse_mode="HTML",
+                      disable_preview=True, reply_markup=None):
         """Send a single message to a specific chat_id."""
         payload = {
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
+            "parse_mode": parse_mode,
+            "disable_web_page_preview": disable_preview,
         }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
         result = self._call_api("sendMessage", payload)
         if result and result.get("ok"):
             return True
         return False
 
+    # ──────────────────────────────────────────────────────────────────────
+    # Invite link management
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _create_invite_link(self, group_chat_id, expire_seconds=60, member_limit=1):
+        """Create an invite link that expires after `expire_seconds`.
+
+        Uses createChatInviteLink which produces a UNIQUE link per call.
+        Safe for concurrent requests — each user gets their own link.
+        """
+        expire_date = int(_time.time()) + expire_seconds
+        payload = {
+            "chat_id": group_chat_id,
+            "expire_date": expire_date,
+            "member_limit": member_limit,
+        }
+        result = self._call_api("createChatInviteLink", payload)
+        if result and result.get("ok"):
+            return result["result"].get("invite_link")
+        return None
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Group member verification
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _kick_unverified_member(self, chat_id, user_id, first_name=""):
+        """Remove a user from a group if they haven't starred the repo."""
+        payload = {"chat_id": chat_id, "user_id": user_id}
+        self._call_api("banChatMember", payload)
+        _time.sleep(0.5)
+        # Immediately unban so they can re-join later with a valid invite
+        payload_unban = {
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "only_if_banned": True,
+        }
+        self._call_api("unbanChatMember", payload_unban)
+        self.logger.warn(
+            "Kicked unverified user {} ({}) from group {}".format(
+                first_name, user_id, chat_id
+            )
+        )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Message formatters
+    # ──────────────────────────────────────────────────────────────────────
+
     def _format_exam_summary(self, exam_key, seats):
         """Format a single exam summary message (aggregated by city/region)."""
-        # Group by (region, city)
         groups = {}
         for s in seats:
             key = (s.get("region", ""), s.get("city", ""))
             g = groups.setdefault(key, {"seats": 0, "dates": set()})
-            # seats may be "---"; parse defensively
             try:
                 g["seats"] += int(str(s.get("seats", "0")).strip())
             except Exception:
-                # if we can't parse, count it as 1 "available"
                 g["seats"] += 1
             d = str(s.get("date", "")).strip()
             if d:
@@ -104,7 +185,7 @@ class TelegramNotifier:
         ]
         for (region, city), g in sorted(groups.items(), key=lambda x: (x[0][0], x[0][1])):
             lines.append(
-                "\U0001F4CD <b>{region}</b> – {city}: {seats} {lbl_seats}, {dates} {lbl_dates}".format(
+                "\U0001F4CD <b>{region}</b> \u2013 {city}: {seats} {lbl_seats}, {dates} {lbl_dates}".format(
                     region=region or "-",
                     city=city or "-",
                     seats=g["seats"],
@@ -123,124 +204,55 @@ class TelegramNotifier:
 
         return "\n".join(lines)
 
-    def _format_alert(self, seat):
-        """Legacy per-seat alert formatter (kept for compatibility)."""
-        return (
-            "\U0001F6A8 <b>{title}</b>\n\n"
-            "\U0001F4CB <b>{lbl_exam}:</b> {exam}\n"
-            "\U0001F4CB <b>{lbl_fmt}:</b> {fmt}\n"
-            "\U0001F3EB <b>{lbl_uni}:</b> {uni}\n"
-            "\U0001F4CD <b>{lbl_city}:</b> {city}\n"
-            "\U0001F5FA <b>{lbl_region}:</b> {region}\n"
-            "\U0001F4BA <b>{lbl_seats}:</b> {seats}\n"
-            "\U0001F4C5 <b>{lbl_date}:</b> {date}\n"
-            "\u23F0 <b>{lbl_deadline}:</b> {deadline}\n\n"
-            "\U0001F517 <a href='https://testcisia.it/studenti_tolc/login_sso.php'>"
-            "\U0001F4CC {book}</a>"
-        ).format(
-            title=self.lang.t("alert_title"),
-            lbl_exam=self.lang.t("exam"),
-            exam=seat.get("exam", ""),
-            lbl_fmt=self.lang.t("format"),
-            fmt=seat["format"],
-            lbl_uni=self.lang.t("university"),
-            uni=seat["university"],
-            lbl_city=self.lang.t("city"),
-            city=seat["city"],
-            lbl_region=self.lang.t("region"),
-            region=seat["region"],
-            lbl_seats=self.lang.t("seats"),
-            seats=seat["seats"],
-            lbl_date=self.lang.t("date"),
-            date=seat["date"],
-            lbl_deadline=self.lang.t("deadline"),
-            deadline=seat["deadline"],
-            book=self.lang.t("book_now"),
-        )
-
-    def _get_recipient_ids(self):
-        """Return list of chat_ids to notify."""
-        recipients = []
-        if self.multi_user and self.subscribers:
-            recipients = [r["chat_id"] for r in self.subscribers.get_active_subscribers()]
-            if self.chat_id and str(self.chat_id) not in recipients:
-                recipients.append(str(self.chat_id))
-        else:
-            if self.chat_id:
-                recipients = [str(self.chat_id)]
-        return recipients
-
-    def _user_selected_exams(self, chat_id):
-        """Return list of selected exams for a user (may include ALL)."""
-        if not self.multi_user or not self.subscribers:
-            return ["ALL"]
-
-        rec = self.subscribers.get_subscriber(chat_id)
-        if rec and rec.get("active"):
-            return rec.get("exams", [])
-
-        # If the admin isn't subscribed, default admin to ALL.
-        if self.chat_id and str(chat_id) == str(self.chat_id):
-            return ["ALL"]
-
-        return []
+    # ──────────────────────────────────────────────────────────────────────
+    # Public notification methods (sends to GROUPS now)
+    # ──────────────────────────────────────────────────────────────────────
 
     def send_availability_alert(self, results_by_exam):
-        """Send ONE aggregated message per exam (per user)."""
-        recipients = self._get_recipient_ids()
-
-        for rid in recipients:
-            selected = self._user_selected_exams(rid)
-            if not selected:
+        """Send ONE aggregated message per exam to the corresponding GROUP."""
+        for exam_key, seats in results_by_exam.items():
+            if not seats:
                 continue
 
-            wants_all = "ALL" in selected
+            group_id = EXAM_GROUP_IDS.get(exam_key)
+            if not group_id:
+                continue
 
-            for exam_key, seats in results_by_exam.items():
-                if not seats:
-                    continue
-                if not wants_all and exam_key not in selected:
-                    continue
-
-                message = self._format_exam_summary(exam_key, seats)
-                self._send_message(rid, message)
-                _time.sleep(0.2)
+            message = self._format_exam_summary(exam_key, seats)
+            self._send_message(group_id, message)
+            _time.sleep(0.5)
 
     def send_daily_no_spots(self, results_by_exam, hours=24):
-        """Send a daily 'still running' message per exam when no seats are found."""
+        """Send a daily 'still running' message per exam to the group."""
         now = int(_time.time())
         interval = int(hours * 3600)
-        recipients = self._get_recipient_ids()
 
-        for rid in recipients:
-            selected = self._user_selected_exams(rid)
-            if not selected:
+        for exam_key in get_all_exam_keys():
+            group_id = EXAM_GROUP_IDS.get(exam_key)
+            if not group_id:
                 continue
 
-            exams_to_check = get_all_exam_keys() if "ALL" in selected else selected
+            seats = results_by_exam.get(exam_key, [])
+            if seats:
+                continue
 
-            for exam_key in exams_to_check:
-                seats = results_by_exam.get(exam_key, [])
-                if seats:
-                    continue
+            last = self._last_no_spots_sent.get(group_id, {}).get(exam_key, 0)
+            if now - int(last) < interval:
+                continue
 
-                last = self._last_no_spots_sent[str(rid)].get(exam_key, 0)
-                if now - int(last) < interval:
-                    continue
-
-                msg = self.lang.t("daily_no_spots", exam=exam_key)
-                self._send_message(rid, msg)
-                self._last_no_spots_sent[str(rid)][exam_key] = now
-                _time.sleep(0.2)
+            msg = self.lang.t("daily_no_spots", exam=exam_key)
+            self._send_message(group_id, msg)
+            self._last_no_spots_sent.setdefault(group_id, {})[exam_key] = now
+            _time.sleep(0.5)
 
     def test_connection(self):
         """Send a test message to the admin to verify the bot works."""
         test_msg = "<b>CISIA CRAWLER</b>\n\n{}".format(self.lang.t("test_message"))
         return self._send_message(self.chat_id, test_msg)
 
-    # ------------------------------------------------------------------
-    # Multi-user polling
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────
+    # Polling
+    # ──────────────────────────────────────────────────────────────────────
 
     def start_polling(self):
         """Start a background thread that polls for Telegram updates."""
@@ -258,7 +270,11 @@ class TelegramNotifier:
                 url = self.API_URL.format(token=self.bot_token, method="getUpdates")
                 resp = requests.get(
                     url,
-                    params={"offset": offset, "timeout": 30},
+                    params={
+                        "offset": offset,
+                        "timeout": 30,
+                        "allowed_updates": '["message","chat_member"]',
+                    },
                     timeout=35,
                 )
                 data = resp.json()
@@ -273,10 +289,27 @@ class TelegramNotifier:
             except Exception:
                 _time.sleep(5)
 
+    # ──────────────────────────────────────────────────────────────────────
+    # Update router
+    # ──────────────────────────────────────────────────────────────────────
+
     def _handle_update(self, update):
         """Route an incoming Telegram update to the right handler."""
+
         message = update.get("message")
-        if not message or "text" not in message:
+        if not message:
+            return
+
+        # Handle new chat members (group join verification)
+        new_members = message.get("new_chat_members", [])
+        if new_members and message.get("chat", {}).get("type") in ("group", "supergroup"):
+            self._handle_new_chat_members(message, new_members)
+            return
+
+        # Only handle private text messages for commands
+        if "text" not in message:
+            return
+        if message.get("chat", {}).get("type") != "private":
             return
 
         chat_id = str(message["chat"]["id"])
@@ -291,20 +324,99 @@ class TelegramNotifier:
             "last_name": user.get("last_name", ""),
         }
 
+        # ── Commands that work WITHOUT star verification ──
+
         if text == "/start":
             self._cmd_start(chat_id, user_info)
-        elif text == "/stop":
+            return
+
+        if text == "/donate":
+            self._cmd_donate_info(chat_id)
+            return
+
+        if text.startswith("/donate "):
+            tx_id = text[len("/donate "):].strip()
+            if tx_id:
+                self._cmd_donate_submit(chat_id, tx_id, user_info)
+            else:
+                self._cmd_donate_info(chat_id)
+            return
+
+        if text.startswith("/github ") or text.startswith("/star "):
+            parts = text.split(None, 1)
+            if len(parts) == 2:
+                self._cmd_verify_star(chat_id, parts[1].strip(), user_info)
+            else:
+                self._send_message(chat_id, self.lang.t("github_usage"))
+            return
+
+        # ── Commands that REQUIRE star verification ──
+
+        sub = self.subscribers.get_subscriber(chat_id) if self.subscribers else None
+        if not sub or not sub.get("github_verified"):
+            self._send_message(chat_id, self.lang.t("github_required"))
+            return
+
+        if text == "/stop":
             self._cmd_stop(chat_id)
-        elif text == "/exams":
-            self._cmd_exams(chat_id)
+        elif text == "/exam" or text == "/exams":
+            self._cmd_exam_menu(chat_id)
         elif text == "/status":
             self._cmd_status(chat_id)
+        elif text == "/help":
+            self._cmd_help(chat_id)
+        elif text == "/interval":
+            self._send_message(chat_id, self.lang.t("interval_info"))
+        elif text.startswith("/interval "):
+            self._cmd_set_interval(chat_id, text)
         else:
             self._try_parse_exam_selection(chat_id, text)
 
+    # ──────────────────────────────────────────────────────────────────────
+    # Group join verification
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _handle_new_chat_members(self, message, new_members):
+        """Check every new member that joins a group.
+        Kick them if they haven't starred the GitHub repo.
+        """
+        group_chat_id = str(message["chat"]["id"])
+
+        for member in new_members:
+            if member.get("is_bot", False):
+                continue
+
+            user_id = member.get("id")
+            first_name = member.get("first_name", "Unknown")
+
+            # Check if this user is a verified subscriber (lookup by user_id)
+            verified = False
+            if self.subscribers:
+                for rec in self.subscribers.get_all_subscribers():
+                    if str(rec.get("user_id")) == str(user_id) and rec.get("github_verified"):
+                        verified = True
+                        break
+
+            if not verified:
+                kick_msg = (
+                    "\u274C <b>{name}</b>, you must verify your GitHub star before "
+                    "joining this group.\n\n"
+                    "1\uFE0F\u20E3 Star the repo: {repo}\n"
+                    "2\uFE0F\u20E3 Open the bot in DM and send:\n"
+                    "    <code>/github your_github_username</code>\n"
+                    "3\uFE0F\u20E3 Then use /exam to get a new invite link."
+                ).format(name=first_name, repo=GITHUB_REPO_URL)
+                self._send_message(group_chat_id, kick_msg)
+                _time.sleep(1)
+                self._kick_unverified_member(group_chat_id, user_id, first_name)
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Bot commands
+    # ──────────────────────────────────────────────────────────────────────
+
     def _cmd_start(self, chat_id, user_info):
         is_new = self.subscribers.subscribe(chat_id, user_info=user_info)
-        self._send_message(chat_id, self.lang.t("bot_welcome"))
+        self._send_message(chat_id, self.lang.t("bot_welcome_v2"))
         if is_new:
             name = "{} {}".format(
                 user_info.get("first_name", ""),
@@ -321,17 +433,69 @@ class TelegramNotifier:
         self.subscribers.unsubscribe(chat_id)
         self._send_message(chat_id, self.lang.t("bot_stopped"))
 
-    def _cmd_exams(self, chat_id):
-        sub = self.subscribers.get_subscriber(chat_id)
-        if not sub or not sub["active"]:
-            self._send_message(chat_id, self.lang.t("bot_not_subscribed"))
+    def _cmd_donate_info(self, chat_id):
+        """Show the USDT TRC20 donation address."""
+        msg = self.lang.t("donate_info", address=USDT_TRC20_ADDRESS)
+        self._send_message(chat_id, msg)
+
+    def _cmd_donate_submit(self, chat_id, tx_id, user_info):
+        """Record a donation transaction ID."""
+        self.donators.add_donation(chat_id, tx_id, user_info=user_info)
+        self._send_message(chat_id, self.lang.t("donate_submitted", tx_id=tx_id))
+
+        # Notify admin
+        admin_msg = (
+            "\U0001F4B0 <b>New Donation Claim</b>\n\n"
+            "User: {name} (@{username})\n"
+            "Chat ID: {chat_id}\n"
+            "TX ID: <code>{tx_id}</code>"
+        ).format(
+            name="{} {}".format(
+                user_info.get("first_name", ""),
+                user_info.get("last_name", ""),
+            ).strip(),
+            username=user_info.get("username", "N/A"),
+            chat_id=chat_id,
+            tx_id=tx_id,
+        )
+        if self.chat_id:
+            self._send_message(self.chat_id, admin_msg)
+
+        self.logger.info("Donation claim from {} (TX: {})".format(chat_id, tx_id))
+
+    def _cmd_verify_star(self, chat_id, github_username, user_info):
+        """Verify that a GitHub user has starred the repo."""
+        github_username = github_username.strip().lstrip("@").strip("/")
+        # Handle URLs like https://github.com/username
+        if "github.com/" in github_username:
+            github_username = github_username.rstrip("/").split("/")[-1]
+
+        if not github_username:
+            self._send_message(chat_id, self.lang.t("github_usage"))
             return
 
+        self._send_message(chat_id, self.lang.t("github_checking", username=github_username))
+
+        if self.github.has_starred(github_username):
+            if self.subscribers:
+                self.subscribers.set_github_verified(chat_id, github_username)
+            self._send_message(chat_id, self.lang.t("github_verified", username=github_username))
+            self.logger.info("GitHub verified: {} -> {}".format(chat_id, github_username))
+        else:
+            self._send_message(
+                chat_id,
+                self.lang.t("github_not_starred",
+                            username=github_username, repo=GITHUB_REPO_URL),
+            )
+
+    def _cmd_exam_menu(self, chat_id):
+        """Show the exam list so user can request an invite link."""
         all_exams = get_all_exam_keys()
         lines = []
         for i, exam in enumerate(all_exams, 1):
             lines.append("{}. {}".format(i, exam))
-        prompt = self.lang.t("bot_choose_exams") + "\n\n" + "\n".join(lines)
+
+        prompt = self.lang.t("exam_select_prompt") + "\n\n" + "\n".join(lines)
         self._send_message(chat_id, prompt)
 
     def _cmd_status(self, chat_id):
@@ -340,45 +504,101 @@ class TelegramNotifier:
             self._send_message(chat_id, self.lang.t("bot_not_subscribed"))
             return
 
-        exams = sub["exams"]
-        if not exams:
-            exams_str = self.lang.t("bot_status_none")
-        elif "ALL" in exams:
-            exams_str = self.lang.t("bot_status_all")
-        else:
-            exams_str = ", ".join(exams)
-        msg = self.lang.t("bot_status", active="Yes", exams=exams_str)
+        gh = sub.get("github_username", "N/A")
+        verified = "\u2705" if sub.get("github_verified") else "\u274C"
+        is_donator = "\u2705" if self.donators.is_donator(chat_id) else "\u274C"
+
+        msg = (
+            "<b>Your Status</b>\n\n"
+            "Active: {active}\n"
+            "GitHub: @{gh} {verified}\n"
+            "Donator: {donator}"
+        ).format(
+            active="Yes" if sub["active"] else "No",
+            gh=gh,
+            verified=verified,
+            donator=is_donator,
+        )
         self._send_message(chat_id, msg)
 
+    def _cmd_help(self, chat_id):
+        """Show all available commands."""
+        self._send_message(chat_id, self.lang.t("help_message"))
+
+    def _cmd_set_interval(self, chat_id, text):
+        """Allow verified users to store a preferred check interval."""
+        try:
+            parts = text.split()
+            minutes = int(parts[1])
+            if minutes < 1 or minutes > 60:
+                self._send_message(chat_id, "Interval must be between 1 and 60 minutes.")
+                return
+            if self.subscribers:
+                self.subscribers.set_interval(chat_id, minutes)
+            self._send_message(
+                chat_id,
+                self.lang.t("interval_set", minutes=minutes),
+            )
+        except (ValueError, IndexError):
+            self._send_message(chat_id, "Usage: /interval <minutes> (1-60)")
+
     def _try_parse_exam_selection(self, chat_id, text):
-        """Try to interpret the message as an exam selection."""
-        sub = self.subscribers.get_subscriber(chat_id)
-        if not sub or not sub["active"]:
+        """Interpret the message as an exam selection for invite link."""
+        sub = self.subscribers.get_subscriber(chat_id) if self.subscribers else None
+        if not sub or not sub.get("active"):
+            return
+
+        if not sub.get("github_verified"):
+            self._send_message(chat_id, self.lang.t("github_required"))
             return
 
         all_exams = get_all_exam_keys()
 
-        if text.lower() == "all":
-            self.subscribers.set_exams(chat_id, ["ALL"])
+        # Try number
+        try:
+            idx = int(text.strip())
+            if 1 <= idx <= len(all_exams):
+                exam_key = all_exams[idx - 1]
+                self._send_invite_link(chat_id, exam_key)
+                return
+        except ValueError:
+            pass
+
+        # Try exact exam name
+        text_upper = text.strip().upper()
+        for exam in all_exams:
+            if text_upper == exam.upper():
+                self._send_invite_link(chat_id, exam)
+                return
+
+    def _send_invite_link(self, chat_id, exam_key):
+        """Generate a 1-minute invite link for the exam group and send it."""
+        group_id = EXAM_GROUP_IDS.get(exam_key)
+        if not group_id:
             self._send_message(
                 chat_id,
-                self.lang.t("bot_exams_updated", exams=self.lang.t("bot_status_all")),
+                "\u26A0\uFE0F Group for <b>{}</b> is not configured yet.".format(exam_key),
             )
             return
 
-        try:
-            indices = [int(x.strip()) for x in text.split(",")]
-            selected = []
-            for idx in indices:
-                if 1 <= idx <= len(all_exams):
-                    selected.append(all_exams[idx - 1])
-            if selected:
-                self.subscribers.set_exams(chat_id, selected)
-                self._send_message(
-                    chat_id,
-                    self.lang.t("bot_exams_updated", exams=", ".join(selected)),
-                )
-            else:
-                self._send_message(chat_id, self.lang.t("bot_exams_invalid"))
-        except ValueError:
-            pass
+        self._send_message(
+            chat_id,
+            self.lang.t("invite_generating", exam=exam_key),
+        )
+
+        # createChatInviteLink produces a unique link per call,
+        # so concurrent requests for the same group each get their own link.
+        link = self._create_invite_link(group_id, expire_seconds=60, member_limit=1)
+
+        if link:
+            self._send_message(
+                chat_id,
+                self.lang.t("invite_link", exam=exam_key, link=link),
+            )
+            self.logger.info("Invite link sent to {} for {}".format(chat_id, exam_key))
+        else:
+            self._send_message(
+                chat_id,
+                "\u274C Failed to create invite link for <b>{}</b>. "
+                "Make sure the bot is an admin in the group.".format(exam_key),
+            )
