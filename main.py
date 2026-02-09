@@ -73,6 +73,12 @@ def run_bot(settings):
     # Telegram
     telegram = None
     if settings["telegram"]["enabled"]:
+        # Load exam group IDs into the telegram module
+        from notifications.telegram_bot import EXAM_GROUP_IDS
+        for exam_key, group_id in settings.get("exam_group_ids", {}).items():
+            if group_id:
+                EXAM_GROUP_IDS[exam_key] = group_id
+
         telegram = TelegramNotifier(
             bot_token=settings["telegram"]["bot_token"],
             chat_id=settings["telegram"]["chat_id"],
@@ -80,6 +86,7 @@ def run_bot(settings):
             logger=logger,
             message_count=settings["telegram"]["message_count"],
             multi_user=settings["telegram"]["multi_user"],
+            github_token=settings["telegram"].get("github_token", ""),
         )
         logger.info(lang.t("telegram_enabled"))
         logger.info(lang.t("msg_count", count=settings["telegram"]["message_count"]))
