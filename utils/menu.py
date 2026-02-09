@@ -112,10 +112,16 @@ def settings_menu(settings):
         print("  6.  Page language      : {}".format(settings["page_language"]))
         print("  7.  Telegram settings")
         print("  8.  Email settings")
-        print("  9.  Back to main menu")
+        print("  9.  Exam group IDs     : {}/{} configured".format(
+            _count_configured_groups(settings), len(get_all_exam_keys())))
+        pg = settings.get("premium_group_id", "")
+        print("  10. Premium group ID   : {}".format(pg if pg else "(not set)"))
+        delay = settings.get("startup_delay_seconds", 300)
+        print("  11. Startup delay      : {}s".format(delay))
+        print("  12. Back to main menu")
         print("")
 
-        choice = input("  Select option [1-9]: ").strip()
+        choice = input("  Select option [1-12]: ").strip()
 
         if choice == "1":
             _set_exam_type(settings)
@@ -134,6 +140,15 @@ def settings_menu(settings):
         elif choice == "8":
             _email_settings(settings)
         elif choice == "9":
+            _exam_group_ids_settings(settings)
+        elif choice == "10":
+            _premium_group_setting(settings)
+        elif choice == "11":
+            val = read_int("Startup delay (seconds, 0-3600)", default=delay, lo=0, hi=3600)
+            settings["startup_delay_seconds"] = val
+            print("  -> Startup delay set to: {}s".format(val))
+            pause()
+        elif choice == "12":
             # Validate before saving
             ok, err = validate_settings(settings)
             if not ok:
@@ -468,7 +483,7 @@ def show_about():
     print("  === ABOUT ===")
     print("")
     print("  Name      : CISIA CRAWLER")
-    print("  Version   : 1.2.1")
+    print("  Version   : 1.1.0")
     print("  Author    : Kasra Falahati")
     print("  License   : MIT")
     print("  GitHub    : {}".format(GITHUB_URL))
@@ -502,4 +517,78 @@ def show_donate():
     except Exception:
         print("  (Could not open browser. Please visit the URL manually.)")
 
+    pause()
+
+
+def _count_configured_groups(settings):
+    """Count how many exam groups have a chat_id set."""
+    groups = settings.get("exam_group_ids", {})
+    return sum(1 for v in groups.values() if v)
+
+
+def _exam_group_ids_settings(settings):
+    """Let admin configure the chat_id for each exam group."""
+    groups = settings.setdefault("exam_group_ids", {})
+    all_exams = get_all_exam_keys()
+
+    # Make sure all exams have an entry
+    for exam in all_exams:
+        if exam not in groups:
+            groups[exam] = ""
+
+    while True:
+        clear_screen()
+        print_banner()
+        print("  === EXAM GROUP IDS ===")
+        print("")
+        for i, exam in enumerate(all_exams, 1):
+            gid = groups.get(exam, "")
+            status = gid if gid else "(not set)"
+            print("  {:>2}. {:<10} : {}".format(i, exam, status))
+        print("")
+        print("  {:>2}. Back".format(len(all_exams) + 1))
+        print("")
+
+        choice = input("  Select exam to set group ID [1-{}]: ".format(len(all_exams) + 1)).strip()
+
+        try:
+            idx = int(choice)
+        except ValueError:
+            continue
+
+        if idx == len(all_exams) + 1:
+            break
+
+        if idx < 1 or idx > len(all_exams):
+            continue
+
+        exam = all_exams[idx - 1]
+        current = groups.get(exam, "")
+        print("")
+        if current:
+            print("  Current group ID for {}: {}".format(exam, current))
+        new_val = read_input("Group chat ID for {} (leave empty to clear)".format(exam), default=current)
+        groups[exam] = new_val.strip()
+        if new_val.strip():
+            print("  -> {} group ID set to: {}".format(exam, new_val.strip()))
+        else:
+            print("  -> {} group ID cleared.".format(exam))
+        pause()
+
+
+def _premium_group_setting(settings):
+    """Let admin set the premium group chat_id."""
+    print("")
+    current = settings.get("premium_group_id", "")
+    if current:
+        print("  Current Premium group ID: {}".format(current))
+    else:
+        print("  Premium group ID is not set.")
+    print("")
+    new_val = read_input("Premium group chat ID (leave empty to clear)", default=current)
+    settings["premium_group_id"] = new_val.strip()
+    if new_val.strip():
+        print("  -> Premium group ID set to: {}".format(new_val.strip()))
+    else:
+        print("  -> Premium group ID cleared.")
     pause()
