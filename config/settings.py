@@ -41,6 +41,7 @@ DEFAULT_CONFIG = {
         "chat_id": "",
         "message_count": 5,
         "multi_user": False,
+        "github_token": "",
     },
     "email": {
         "enabled": False,
@@ -51,6 +52,19 @@ DEFAULT_CONFIG = {
         "from_email": "",
         "to_email": "",
         "use_tls": True,
+    },
+    "exam_group_ids": {
+        "CEnT-S": "",
+        "TOLC-AV": "",
+        "TOLC-B": "",
+        "TOLC-E": "",
+        "TOLC-F": "",
+        "TOLC-I": "",
+        "TOLC-LP": "",
+        "TOLC-PSI": "",
+        "TOLC-S": "",
+        "TOLC-SPS": "",
+        "TOLC-SU": "",
     },
 }
 
