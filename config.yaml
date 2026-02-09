@@ -12,6 +12,7 @@ telegram:
   chat_id: ''
   message_count: 5
   multi_user: false
+  github_token: ''       # Optional: GitHub personal access token (increases API rate limit)
 email:
   enabled: false
   smtp_host: smtp.gmail.com
@@ -21,3 +22,19 @@ email:
   from_email: ''
   to_email: ''
   use_tls: true
+
+# Telegram group chat IDs for each exam.
+# The bot must be admin with full permissions in each group.
+# Get the chat_id by adding the bot to the group and using /start or getUpdates.
+exam_group_ids:
+  CEnT-S: ''
+  TOLC-AV: ''
+  TOLC-B: ''
+  TOLC-E: ''
+  TOLC-F: ''
+  TOLC-I: ''
+  TOLC-LP: ''
+  TOLC-PSI: ''
+  TOLC-S: ''
+  TOLC-SPS: ''
+  TOLC-SU: ''
