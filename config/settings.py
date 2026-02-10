@@ -135,7 +135,7 @@ def print_banner():
     """Print the application banner."""
     print("")
     print("  ================================================================")
-    print("   CISIA CRAWLER v1.2.1")
+    print("   CISIA CRAWLER v1.3.0")
     print("   Author: Kasra Falahati")
     print("   https://github.com/blackat5445/cisia-crawler")
     print("  ================================================================")
