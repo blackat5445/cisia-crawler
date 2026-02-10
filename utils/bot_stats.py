@@ -14,7 +14,11 @@ STATS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bot_stats
 
 
 class BotStats:
-    """Thread-safe bot statistics storage."""
+    """Thread-safe bot statistics storage.
+    
+    Reads fresh from disk on every get operation so that separate
+    processes (web panel, bot_runner, main.py) always see each other's writes.
+    """
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -36,6 +40,17 @@ class BotStats:
         self._load()
 
     def _load(self):
+        """Load stats from disk, merging with defaults."""
+        if os.path.exists(STATS_FILE):
+            try:
+                with open(STATS_FILE, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                self._data.update(saved)
+            except Exception:
+                pass
+
+    def _reload(self):
+        """Re-read from disk to pick up writes from other processes."""
         if os.path.exists(STATS_FILE):
             try:
                 with open(STATS_FILE, "r", encoding="utf-8") as f:
@@ -50,6 +65,7 @@ class BotStats:
 
     def set_running(self, running, pid=None):
         with self._lock:
+            self._reload()
             self._data["bot_running"] = running
             self._data["bot_pid"] = pid
             if running:
@@ -58,6 +74,7 @@ class BotStats:
 
     def is_running(self):
         with self._lock:
+            self._reload()
             return self._data.get("bot_running", False)
 
     def record_crawl(self, seats_found=0, exams_checked=0):
@@ -65,6 +82,7 @@ class BotStats:
         day = now.strftime("%Y-%m-%d")
         ts = now.strftime("%Y-%m-%d %H:%M:%S")
         with self._lock:
+            self._reload()
             self._data["total_crawls"] += 1
             self._data["total_seats_found"] += seats_found
             self._data["last_crawl_at"] = ts
@@ -82,6 +100,7 @@ class BotStats:
         day = now.strftime("%Y-%m-%d")
         ts = now.strftime("%Y-%m-%d %H:%M:%S")
         with self._lock:
+            self._reload()
             self._data["total_errors"] += 1
             self._data["last_error_at"] = ts
             self._data["last_error_msg"] = str(message)[:500]
@@ -92,11 +111,13 @@ class BotStats:
 
     def get_stats(self):
         with self._lock:
+            self._reload()
             return dict(self._data)
 
     def get_daily_data(self, days=14):
         """Return last N days of crawl/error counts for charts."""
         with self._lock:
+            self._reload()
             from datetime import timedelta
             today = datetime.now().date()
             result = []
